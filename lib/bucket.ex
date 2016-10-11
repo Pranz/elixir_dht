@@ -14,4 +14,13 @@ defmodule DHT.Bucket do
   def pop(key) do
     Agent.get_and_update(__MODULE__, &Map.pop(&1, key))
   end
+
+  def exec_tuple_command(command) do
+    case command do
+      {:get, key} -> get(key)
+      {:set, key, value} -> put(key, value)
+      {:pop, key} -> pop(key)
+      {:error, err} -> {:error, err}
+    end
+  end
 end
