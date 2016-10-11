@@ -34,14 +34,16 @@ defmodule DHT.Node do
         :gen_tcp.close(client)
         :closed_client
       {:ok, data} ->
-        parsed_input = data
-        |> String.replace_trailing("\r\n", "")
-        |> Integer.parse()
-        case parsed_input do
-          {key, _binary_rem} ->
+        command = DHT.Command.parse(data)
+        case command do
+          {:get, key} ->
             val = DHT.Bucket.get(key)
-            :gen_tcp.send(client, "Here's the val: #{val}\r\n")
-          :error -> :void
+            write_line(client, "#{val}")
+          {:put, key, value} ->
+            DHT.Bucket.put(key, value)
+            write_line(client, value)
+          :error ->
+            write_line(client, "Invalid command")
         end
         serve(client)
     end
@@ -50,8 +52,11 @@ defmodule DHT.Node do
   defp read_line(client) do
     case :gen_tcp.recv(client, 0) do
       {:ok, data} -> {:ok, data}
-      _ ->
-        :error
+      _ -> :error
     end
+  end
+
+  defp write_line(client, line) do
+    :gen_tcp.send(client, "#{line}\r\n")
   end
 end
