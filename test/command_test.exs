@@ -9,4 +9,8 @@ defmodule DHT.CommandTest do
   test "parse GET", _ do
     assert(C.parse("get 1") == {:get, 1})
   end
+
+  test "remove trailing and leading spaces", _ do
+    assert(C.parse("  get 2 ") == {:get, 2})
+  end
 end
