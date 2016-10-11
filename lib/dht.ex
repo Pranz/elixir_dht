@@ -9,8 +9,9 @@ defmodule DHT do
 
     children = [
       supervisor(Task.Supervisor, [[name: :client_connection]]),
-      worker(Task, [DHT.Node, :listen, [4040]]),
-      worker(DHT.Bucket, [])
+      worker(Task, [DHT.Server, :listen, [4040..4100]]),
+      worker(DHT.Bucket, []),
+      worker(DHT.Node, [])
     ]
 
     # See http://elixir-lang.org/docs/stable/elixir/Supervisor.html
