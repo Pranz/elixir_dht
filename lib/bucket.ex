@@ -4,7 +4,7 @@ defmodule DHT.Bucket do
   end
 
   def get(key) do
-    Agent.get(__MODULE__, &Map.get(&1, key))
+    Agent.get(__MODULE__, &Map.get(&1, key, :no_value_for_key))
   end
 
   def put(key, value) do
@@ -13,6 +13,10 @@ defmodule DHT.Bucket do
 
   def pop(key) do
     Agent.get_and_update(__MODULE__, &Map.pop(&1, key))
+  end
+
+  def get_all() do
+    Agent.get(__MODULE__, &(&1))
   end
 
   def exec_tuple_command(command) do
