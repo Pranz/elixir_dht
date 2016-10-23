@@ -13,7 +13,7 @@ defmodule DHT.Server do
     accept(socket)
   end
 
-  """
+  @doc """
   Tries to listen to port. Returns port and the response from
   :gen_tcp.listen
   """

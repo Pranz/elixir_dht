@@ -1,4 +1,9 @@
 defmodule DHT.Node do
+  use GenServer
+  require Logger
+  @maxkey 4294967295
+  @partioning_degree 4
+  @replication_degree 3
   @doc """
   This is the server that communicates between other nodes. It should ensure that
   at least @replication_degree machines have the key, and atleast one of those
@@ -7,31 +12,49 @@ defmodule DHT.Node do
 
   The servers state is a map mapping every node to a shard index, 0..@partioning_degree.
   """
-  @maxkey 4294967295
-  @partioning_degree 4
-  @replication_degree 3
-  require Logger
-  use GenServer
 
   def start_link do
     self_node = node()
-    nodes = DHT.NodeList.node_list
+    nodes = connect_to_nodes
+
+    {shards, bad_nodes} = GenServer.multi_call(NodeService, :get_shard)
+    shards = Enum.reduce(shards, %{}, fn({node, shard}, acc) -> Map.put(acc, node, shard) end)
+    {least_used_shard, _amount} = shard_count(shards)
+
+    GenServer.abcast(NodeService, {:add_to_shard, self_node, least_used_shard})
+    Logger.info "Started node server with name #{self_node}"
+    Logger.info "Placed into shard #{least_used_shard}"
+    GenServer.start_link(__MODULE__, %{
+          :shards => Map.put(shards, self_node, least_used_shard)},
+      name: NodeService)
+  end
+
+  defp connect_to_nodes do
+    self_node = node()
+    DHT.NodeList.node_list
     |> Stream.filter(fn node -> node != self_node end)
     |> Stream.filter(&Node.connect/1)
     |> Enum.map(fn node ->
       Logger.info("Connected to #{Atom.to_charlist(node)}")
       GenServer.cast({NodeService, node}, {:add_node, self_node})
     end)
+  end
 
-    {shards, bad_nodes} = GenServer.multi_call(NodeService, :get_range, 100)
-    shards = Enum.reduce(%{}, fn({node, shard}, acc) %Map.put(acc, node, shard))
+  defp shard_count(shards) do
+    shards = Enum.reduce(shards, %{}, fn({node, shard}, acc) -> Map.put(acc, node, shard) end)
     shard_count = shards
-    |> Enum.reduce(&{}, &Map.update(&2, &1, 0, fn x -> x + 1))
+    |> DHT.Util.count_keys_with_same_val()
+    shard_count = Enum.reduce(0..@partioning_degree, shard_count, fn(shard, acc) ->
+      Map.put_new(acc, shard, 0)
+    end)
 
-    Logger.info "Started node server with name #{self_node}"
-    GenServer.start_link(__MODULE__, %{
-          :shards => 0},
-      name: NodeService)
+    shard_count
+    |> Enum.reduce({0, 999}, fn ({shard, amount}, {shard2, min_amount}) ->
+      if amount < min_amount
+        do {shard, amount}
+        else {shard2, min_amount}
+      end
+    end)
   end
 
   def handle_cast({:add_node, from_node}, state) do
@@ -40,11 +63,13 @@ defmodule DHT.Node do
     {:noreply, state}
   end
 
-  def handle_call({:get_keys_from_range, range_start, range_end}, _from, state) do
-    :void
+  def handle_cast({:add_to_shard, node, shard}, state) do
+    Logger.info "Adding #{node} to shard #{shard}"
+    {:noreply, %{state | shards: Map.put(state.shards, node, shard)}}
   end
 
-  def handle_call(:get_range, _from, state) do
-    {:reply, 0, state}
+  def handle_call(:get_shard, _from, state) do
+    {:reply, state.shards[node()], state}
   end
+
 end
