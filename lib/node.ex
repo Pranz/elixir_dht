@@ -20,12 +20,21 @@ defmodule DHT.Node do
     {shards, bad_nodes} = GenServer.multi_call(NodeService, :get_shard)
     shards = Enum.reduce(shards, %{}, fn({node, shard}, acc) -> Map.put(acc, node, shard) end)
     {least_used_shard, _amount} = shard_count(shards)
+    shards = Map.put(shards, self_node, least_used_shard)
+    shard_count = DHT.Util.count_keys_with_same_val(shards)
+    for shard_index <- 0..@partioning_degree-1 do
+      shard_amount = Map.get(shard_count, shard_index, 0)
+      if shard_amount < @replication_degree do
+        Logger.warn("Not enough machines for shard #{shard_index}. Need #{@replication_degree}," <>
+        "but only has #{shard_amount}")
+      end
+    end
 
     GenServer.abcast(NodeService, {:add_to_shard, self_node, least_used_shard})
     Logger.info "Started node server with name #{self_node}"
     Logger.info "Placed into shard #{least_used_shard}"
     GenServer.start_link(__MODULE__, %{
-          :shards => Map.put(shards, self_node, least_used_shard)},
+          :shards => shards},
       name: NodeService)
   end
 
@@ -44,7 +53,7 @@ defmodule DHT.Node do
     shards = Enum.reduce(shards, %{}, fn({node, shard}, acc) -> Map.put(acc, node, shard) end)
     shard_count = shards
     |> DHT.Util.count_keys_with_same_val()
-    shard_count = Enum.reduce(0..@partioning_degree, shard_count, fn(shard, acc) ->
+    shard_count = Enum.reduce(0..@partioning_degree-1, shard_count, fn(shard, acc) ->
       Map.put_new(acc, shard, 0)
     end)
 
